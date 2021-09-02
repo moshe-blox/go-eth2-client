@@ -85,7 +85,7 @@ func (s *Service) streamBeaconChainHead(ctx context.Context) {
 			s.beaconChainHeadUpdatedMutex.RLock()
 			for i := range s.beaconChainHeadUpdatedHandlers {
 				go func(handler client.BeaconChainHeadUpdatedHandler) {
-					handler.OnBeaconChainHeadUpdated(s.ctx, beaconChainHead.HeadSlot, beaconChainHead.HeadBlockRoot, signedBeaconBlock.Message.StateRoot[:], beaconChainHead.HeadEpoch != lastEpoch)
+					handler.OnBeaconChainHeadUpdated(s.ctx, beaconChainHead.HeadSlot, beaconChainHead.HeadBlockRoot, signedBeaconBlock.Phase0.Message.StateRoot[:], beaconChainHead.HeadEpoch != lastEpoch)
 				}(s.beaconChainHeadUpdatedHandlers[i])
 			}
 			lastEpoch = beaconChainHead.HeadEpoch

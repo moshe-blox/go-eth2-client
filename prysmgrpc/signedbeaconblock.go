@@ -19,13 +19,14 @@ import (
 	"strconv"
 	"strings"
 
-	spec "github.com/attestantio/go-eth2-client/spec/phase0"
+	"github.com/attestantio/go-eth2-client/spec"
+	"github.com/attestantio/go-eth2-client/spec/phase0"
 	"github.com/pkg/errors"
 	ethpb "github.com/prysmaticlabs/ethereumapis/eth/v1alpha1"
 )
 
 // SignedBeaconBlock fetches a signed beacon block given a block ID.
-func (s *Service) SignedBeaconBlock(ctx context.Context, blockID string) (*spec.SignedBeaconBlock, error) {
+func (s *Service) SignedBeaconBlock(ctx context.Context, blockID string) (*spec.VersionedSignedBeaconBlock, error) {
 	conn := ethpb.NewBeaconChainClient(s.conn)
 	req := &ethpb.ListBlocksRequest{}
 
@@ -70,12 +71,12 @@ func (s *Service) SignedBeaconBlock(ctx context.Context, blockID string) (*spec.
 
 	block := resp.BlockContainers[0].Block
 
-	signedBeaconBlock := &spec.SignedBeaconBlock{
-		Message: &spec.BeaconBlock{
-			Slot:          spec.Slot(block.Block.Slot),
-			ProposerIndex: spec.ValidatorIndex(block.Block.ProposerIndex),
-			Body: &spec.BeaconBlockBody{
-				ETH1Data: &spec.ETH1Data{
+	signedBeaconBlock := &phase0.SignedBeaconBlock{
+		Message: &phase0.BeaconBlock{
+			Slot:          phase0.Slot(block.Block.Slot),
+			ProposerIndex: phase0.ValidatorIndex(block.Block.ProposerIndex),
+			Body: &phase0.BeaconBlockBody{
+				ETH1Data: &phase0.ETH1Data{
 					DepositCount: block.Block.Body.Eth1Data.DepositCount,
 					BlockHash:    block.Block.Body.Eth1Data.BlockHash,
 				},
@@ -88,19 +89,19 @@ func (s *Service) SignedBeaconBlock(ctx context.Context, blockID string) (*spec.
 	copy(signedBeaconBlock.Message.StateRoot[:], block.Block.StateRoot)
 	copy(signedBeaconBlock.Message.Body.RANDAOReveal[:], block.Block.Body.RandaoReveal)
 	copy(signedBeaconBlock.Message.Body.ETH1Data.DepositRoot[:], block.Block.Body.Eth1Data.DepositRoot)
-	signedBeaconBlock.Message.Body.ProposerSlashings = make([]*spec.ProposerSlashing, len(block.Block.Body.ProposerSlashings))
+	signedBeaconBlock.Message.Body.ProposerSlashings = make([]*phase0.ProposerSlashing, len(block.Block.Body.ProposerSlashings))
 	for i := range block.Block.Body.ProposerSlashings {
-		signedBeaconBlock.Message.Body.ProposerSlashings[i] = &spec.ProposerSlashing{
-			SignedHeader1: &spec.SignedBeaconBlockHeader{
-				Message: &spec.BeaconBlockHeader{
-					Slot:          spec.Slot(block.Block.Body.ProposerSlashings[i].Header_1.Header.Slot),
-					ProposerIndex: spec.ValidatorIndex(block.Block.Body.ProposerSlashings[i].Header_1.Header.ProposerIndex),
+		signedBeaconBlock.Message.Body.ProposerSlashings[i] = &phase0.ProposerSlashing{
+			SignedHeader1: &phase0.SignedBeaconBlockHeader{
+				Message: &phase0.BeaconBlockHeader{
+					Slot:          phase0.Slot(block.Block.Body.ProposerSlashings[i].Header_1.Header.Slot),
+					ProposerIndex: phase0.ValidatorIndex(block.Block.Body.ProposerSlashings[i].Header_1.Header.ProposerIndex),
 				},
 			},
-			SignedHeader2: &spec.SignedBeaconBlockHeader{
-				Message: &spec.BeaconBlockHeader{
-					Slot:          spec.Slot(block.Block.Body.ProposerSlashings[i].Header_2.Header.Slot),
-					ProposerIndex: spec.ValidatorIndex(block.Block.Body.ProposerSlashings[i].Header_2.Header.ProposerIndex),
+			SignedHeader2: &phase0.SignedBeaconBlockHeader{
+				Message: &phase0.BeaconBlockHeader{
+					Slot:          phase0.Slot(block.Block.Body.ProposerSlashings[i].Header_2.Header.Slot),
+					ProposerIndex: phase0.ValidatorIndex(block.Block.Body.ProposerSlashings[i].Header_2.Header.ProposerIndex),
 				},
 			},
 		}
@@ -113,32 +114,32 @@ func (s *Service) SignedBeaconBlock(ctx context.Context, blockID string) (*spec.
 		copy(signedBeaconBlock.Message.Body.ProposerSlashings[i].SignedHeader2.Message.BodyRoot[:], block.Block.Body.ProposerSlashings[i].Header_2.Header.BodyRoot)
 		copy(signedBeaconBlock.Message.Body.ProposerSlashings[i].SignedHeader2.Signature[:], block.Block.Body.ProposerSlashings[i].Header_2.Signature)
 	}
-	signedBeaconBlock.Message.Body.AttesterSlashings = make([]*spec.AttesterSlashing, len(block.Block.Body.AttesterSlashings))
+	signedBeaconBlock.Message.Body.AttesterSlashings = make([]*phase0.AttesterSlashing, len(block.Block.Body.AttesterSlashings))
 	for i := range block.Block.Body.AttesterSlashings {
-		signedBeaconBlock.Message.Body.AttesterSlashings[i] = &spec.AttesterSlashing{
-			Attestation1: &spec.IndexedAttestation{
+		signedBeaconBlock.Message.Body.AttesterSlashings[i] = &phase0.AttesterSlashing{
+			Attestation1: &phase0.IndexedAttestation{
 				AttestingIndices: block.Block.Body.AttesterSlashings[i].Attestation_1.AttestingIndices,
-				Data: &spec.AttestationData{
-					Slot:  spec.Slot(block.Block.Body.AttesterSlashings[i].Attestation_1.Data.Slot),
-					Index: spec.CommitteeIndex(block.Block.Body.AttesterSlashings[i].Attestation_1.Data.CommitteeIndex),
-					Source: &spec.Checkpoint{
-						Epoch: spec.Epoch(block.Block.Body.AttesterSlashings[i].Attestation_1.Data.Source.Epoch),
+				Data: &phase0.AttestationData{
+					Slot:  phase0.Slot(block.Block.Body.AttesterSlashings[i].Attestation_1.Data.Slot),
+					Index: phase0.CommitteeIndex(block.Block.Body.AttesterSlashings[i].Attestation_1.Data.CommitteeIndex),
+					Source: &phase0.Checkpoint{
+						Epoch: phase0.Epoch(block.Block.Body.AttesterSlashings[i].Attestation_1.Data.Source.Epoch),
 					},
-					Target: &spec.Checkpoint{
-						Epoch: spec.Epoch(block.Block.Body.AttesterSlashings[i].Attestation_1.Data.Target.Epoch),
+					Target: &phase0.Checkpoint{
+						Epoch: phase0.Epoch(block.Block.Body.AttesterSlashings[i].Attestation_1.Data.Target.Epoch),
 					},
 				},
 			},
-			Attestation2: &spec.IndexedAttestation{
+			Attestation2: &phase0.IndexedAttestation{
 				AttestingIndices: block.Block.Body.AttesterSlashings[i].Attestation_2.AttestingIndices,
-				Data: &spec.AttestationData{
-					Slot:  spec.Slot(block.Block.Body.AttesterSlashings[i].Attestation_2.Data.Slot),
-					Index: spec.CommitteeIndex(block.Block.Body.AttesterSlashings[i].Attestation_2.Data.CommitteeIndex),
-					Source: &spec.Checkpoint{
-						Epoch: spec.Epoch(block.Block.Body.AttesterSlashings[i].Attestation_2.Data.Source.Epoch),
+				Data: &phase0.AttestationData{
+					Slot:  phase0.Slot(block.Block.Body.AttesterSlashings[i].Attestation_2.Data.Slot),
+					Index: phase0.CommitteeIndex(block.Block.Body.AttesterSlashings[i].Attestation_2.Data.CommitteeIndex),
+					Source: &phase0.Checkpoint{
+						Epoch: phase0.Epoch(block.Block.Body.AttesterSlashings[i].Attestation_2.Data.Source.Epoch),
 					},
-					Target: &spec.Checkpoint{
-						Epoch: spec.Epoch(block.Block.Body.AttesterSlashings[i].Attestation_2.Data.Target.Epoch),
+					Target: &phase0.Checkpoint{
+						Epoch: phase0.Epoch(block.Block.Body.AttesterSlashings[i].Attestation_2.Data.Target.Epoch),
 					},
 				},
 			},
@@ -152,18 +153,18 @@ func (s *Service) SignedBeaconBlock(ctx context.Context, blockID string) (*spec.
 		copy(signedBeaconBlock.Message.Body.AttesterSlashings[i].Attestation2.Data.Target.Root[:], block.Block.Body.AttesterSlashings[i].Attestation_2.Data.Target.Root)
 		copy(signedBeaconBlock.Message.Body.AttesterSlashings[i].Attestation2.Signature[:], block.Block.Body.AttesterSlashings[i].Attestation_2.Signature)
 	}
-	signedBeaconBlock.Message.Body.Attestations = make([]*spec.Attestation, len(block.Block.Body.Attestations))
+	signedBeaconBlock.Message.Body.Attestations = make([]*phase0.Attestation, len(block.Block.Body.Attestations))
 	for i := range block.Block.Body.Attestations {
-		signedBeaconBlock.Message.Body.Attestations[i] = &spec.Attestation{
+		signedBeaconBlock.Message.Body.Attestations[i] = &phase0.Attestation{
 			AggregationBits: block.Block.Body.Attestations[i].AggregationBits,
-			Data: &spec.AttestationData{
-				Slot:  spec.Slot(block.Block.Body.Attestations[i].Data.Slot),
-				Index: spec.CommitteeIndex(block.Block.Body.Attestations[i].Data.CommitteeIndex),
-				Source: &spec.Checkpoint{
-					Epoch: spec.Epoch(block.Block.Body.Attestations[i].Data.Source.Epoch),
+			Data: &phase0.AttestationData{
+				Slot:  phase0.Slot(block.Block.Body.Attestations[i].Data.Slot),
+				Index: phase0.CommitteeIndex(block.Block.Body.Attestations[i].Data.CommitteeIndex),
+				Source: &phase0.Checkpoint{
+					Epoch: phase0.Epoch(block.Block.Body.Attestations[i].Data.Source.Epoch),
 				},
-				Target: &spec.Checkpoint{
-					Epoch: spec.Epoch(block.Block.Body.Attestations[i].Data.Target.Epoch),
+				Target: &phase0.Checkpoint{
+					Epoch: phase0.Epoch(block.Block.Body.Attestations[i].Data.Target.Epoch),
 				},
 			},
 		}
@@ -172,28 +173,31 @@ func (s *Service) SignedBeaconBlock(ctx context.Context, blockID string) (*spec.
 		copy(signedBeaconBlock.Message.Body.Attestations[i].Data.Target.Root[:], block.Block.Body.Attestations[i].Data.Target.Root)
 		copy(signedBeaconBlock.Message.Body.Attestations[i].Signature[:], block.Block.Body.Attestations[i].Signature)
 	}
-	signedBeaconBlock.Message.Body.Deposits = make([]*spec.Deposit, len(block.Block.Body.Deposits))
+	signedBeaconBlock.Message.Body.Deposits = make([]*phase0.Deposit, len(block.Block.Body.Deposits))
 	for i := range block.Block.Body.Deposits {
-		signedBeaconBlock.Message.Body.Deposits[i] = &spec.Deposit{
+		signedBeaconBlock.Message.Body.Deposits[i] = &phase0.Deposit{
 			Proof: block.Block.Body.Deposits[i].Proof,
-			Data: &spec.DepositData{
+			Data: &phase0.DepositData{
 				WithdrawalCredentials: block.Block.Body.Deposits[i].Data.WithdrawalCredentials,
-				Amount:                spec.Gwei(block.Block.Body.Deposits[i].Data.Amount),
+				Amount:                phase0.Gwei(block.Block.Body.Deposits[i].Data.Amount),
 			},
 		}
 		copy(signedBeaconBlock.Message.Body.Deposits[i].Data.PublicKey[:], block.Block.Body.Deposits[i].Data.PublicKey)
 		copy(signedBeaconBlock.Message.Body.Deposits[i].Data.Signature[:], block.Block.Body.Deposits[i].Data.Signature)
 	}
-	signedBeaconBlock.Message.Body.VoluntaryExits = make([]*spec.SignedVoluntaryExit, len(block.Block.Body.VoluntaryExits))
+	signedBeaconBlock.Message.Body.VoluntaryExits = make([]*phase0.SignedVoluntaryExit, len(block.Block.Body.VoluntaryExits))
 	for i := range block.Block.Body.VoluntaryExits {
-		signedBeaconBlock.Message.Body.VoluntaryExits[i] = &spec.SignedVoluntaryExit{
-			Message: &spec.VoluntaryExit{
-				Epoch:          spec.Epoch(block.Block.Body.VoluntaryExits[i].Exit.Epoch),
-				ValidatorIndex: spec.ValidatorIndex(block.Block.Body.VoluntaryExits[i].Exit.ValidatorIndex),
+		signedBeaconBlock.Message.Body.VoluntaryExits[i] = &phase0.SignedVoluntaryExit{
+			Message: &phase0.VoluntaryExit{
+				Epoch:          phase0.Epoch(block.Block.Body.VoluntaryExits[i].Exit.Epoch),
+				ValidatorIndex: phase0.ValidatorIndex(block.Block.Body.VoluntaryExits[i].Exit.ValidatorIndex),
 			},
 		}
 		copy(signedBeaconBlock.Message.Body.VoluntaryExits[i].Signature[:], block.Block.Body.VoluntaryExits[i].Signature)
 	}
 
-	return signedBeaconBlock, nil
+	return &spec.VersionedSignedBeaconBlock{
+		Version: spec.DataVersionPhase0,
+		Phase0:  signedBeaconBlock,
+	}, nil
 }
