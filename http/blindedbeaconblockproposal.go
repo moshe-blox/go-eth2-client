@@ -61,6 +61,8 @@ func (s *Service) blindedBeaconBlockProposal(ctx context.Context, slot phase0.Sl
 	res := &api.VersionedBlindedBeaconBlock{
 		Version: metadata.Version,
 	}
+	metadata.Version = spec.DataVersionBellatrix
+	res.Version = spec.DataVersionBellatrix
 
 	switch metadata.Version {
 	case spec.DataVersionBellatrix:
