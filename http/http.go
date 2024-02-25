@@ -31,6 +31,8 @@ import (
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
+
+	golog "log"
 )
 
 // post sends an HTTP post request and returns the body.
@@ -339,7 +341,7 @@ func (s *Service) get(ctx context.Context, endpoint string, opts *api.CommonOpts
 	if proposalDebugging {
 		log.Debug().Msg("BlockProposalRequestDebug: HTTP returning")
 
-		log.Printf("goeth2client-GET request took %s (request %s, read %s)", time.Since(startMethod), endRequest.Sub(startRequest), endRead.Sub(startRead))
+		golog.Printf("goeth2client-GET request took %s (request %s, read %s)", time.Since(startMethod), endRequest.Sub(startRequest), endRead.Sub(startRead))
 	}
 
 	return res, nil
