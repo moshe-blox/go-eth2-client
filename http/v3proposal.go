@@ -17,6 +17,9 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"log"
+	"time"
+
 	apiv1bellatrix "github.com/attestantio/go-eth2-client/api/v1/bellatrix"
 	apiv1capella "github.com/attestantio/go-eth2-client/api/v1/capella"
 	apiv1deneb "github.com/attestantio/go-eth2-client/api/v1/deneb"
@@ -38,6 +41,7 @@ func (s *Service) V3Proposal(ctx context.Context,
 	*api.Response[*api.VersionedV3Proposal],
 	error,
 ) {
+	startMethod := time.Now()
 	ctx, span := otel.Tracer("attestantio.go-eth2-client.http").Start(ctx, "V3Proposal")
 	defer span.End()
 
@@ -62,6 +66,7 @@ func (s *Service) V3Proposal(ctx context.Context,
 		return nil, errors.Wrap(err, "failed to request v3 beacon block proposal")
 	}
 
+	startUnmarshal := time.Now()
 	var response *api.Response[*api.VersionedV3Proposal]
 	switch res.contentType {
 	case ContentTypeSSZ:
@@ -74,6 +79,7 @@ func (s *Service) V3Proposal(ctx context.Context,
 	if err != nil {
 		return nil, err
 	}
+	endUnmarshal := time.Now()
 
 	// Ensure the data returned to us is as expected given our input.
 	blockSlot, err := response.Data.Slot()
@@ -103,6 +109,8 @@ func (s *Service) V3Proposal(ctx context.Context,
 			return nil, fmt.Errorf("v3 beacon block proposal has graffiti %#x; expected %#x", blockGraffiti[:], opts.Graffiti[:])
 		}
 	}
+
+	log.Printf("goeth2client-V3Proposal took %s (unmarshal %s)", time.Since(startMethod), endUnmarshal.Sub(startUnmarshal))
 
 	return response, nil
 }

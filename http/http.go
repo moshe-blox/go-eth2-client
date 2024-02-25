@@ -209,6 +209,7 @@ type httpResponse struct {
 // get sends an HTTP get request and returns the body.
 // If the response from the server is a 404 this will return nil for both the reader and the error.
 func (s *Service) get(ctx context.Context, endpoint string, opts *api.CommonOpts) (*httpResponse, error) {
+	startMethod := time.Now()
 	ctx, span := otel.Tracer("attestantio.go-eth2-client.http").Start(ctx, "get2")
 	defer span.End()
 
@@ -253,6 +254,7 @@ func (s *Service) get(ctx context.Context, endpoint string, opts *api.CommonOpts
 	if proposalDebugging {
 		log.Debug().Msg("BlockProposalRequestDebug: HTTP requesting")
 	}
+	startRequest := time.Now()
 	resp, err := s.client.Do(req)
 	if err != nil {
 		span.RecordError(errors.New("Request failed"))
@@ -260,6 +262,7 @@ func (s *Service) get(ctx context.Context, endpoint string, opts *api.CommonOpts
 
 		return nil, errors.Wrap(err, "failed to call GET endpoint")
 	}
+	endRequest := time.Now()
 	defer resp.Body.Close()
 	log = log.With().Int("status_code", resp.StatusCode).Logger()
 	log = log.With().Str("raw-content-type", resp.Header.Get("Content-Type")).Logger()
@@ -289,42 +292,15 @@ func (s *Service) get(ctx context.Context, endpoint string, opts *api.CommonOpts
 	if proposalDebugging {
 		log.Debug().Msg("BlockProposalRequestDebug: HTTP reading")
 	}
-
-	// res.body, err = io.ReadAll(resp.Body)
-	// if err != nil {
-	// 	span.RecordError(err)
-	// 	log.Warn().Err(err).Msg("Failed to read body")
-
-	// 	return nil, errors.Wrap(err, "failed to read body")
-	// }
-
-	// Instead of reading all immediately, read 1 byte to measure the time-to-first-byte
-	// and then read the rest.
-	buf := make([]byte, 1)
-	start := time.Now()
-	n, err := resp.Body.Read(buf)
-	if err != nil {
-		span.RecordError(err)
-		log.Warn().Err(err).Msg("Failed to read first byte")
-
-		return nil, errors.Wrap(err, "failed to read first byte")
-	}
-	if n != 1 {
-		span.RecordError(errors.New("First byte read was not 1 byte"))
-		log.Warn().Msg("First byte read was not 1 byte")
-
-		return nil, errors.New("First byte read was not 1 byte")
-	}
-	log = log.With().Str("time-to-first-byte", time.Since(start).String()).Logger()
-	body, err := io.ReadAll(resp.Body)
+	startRead := time.Now()
+	res.body, err = io.ReadAll(resp.Body)
 	if err != nil {
 		span.RecordError(err)
 		log.Warn().Err(err).Msg("Failed to read body")
 
 		return nil, errors.Wrap(err, "failed to read body")
 	}
-	res.body = append(buf, body...)
-	log = log.With().Str("time-to-all-bytes", time.Since(start).String()).Logger()
+	endRead := time.Now()
 	log = log.With().Int("body-length", len(res.body)).Logger()
 
 	if proposalDebugging {
@@ -362,6 +338,8 @@ func (s *Service) get(ctx context.Context, endpoint string, opts *api.CommonOpts
 
 	if proposalDebugging {
 		log.Debug().Msg("BlockProposalRequestDebug: HTTP returning")
+
+		log.Printf("goeth2client-GET request took %s (request %s, read %s)", time.Since(startMethod), endRequest.Sub(startRequest), endRead.Sub(startRead))
 	}
 
 	return res, nil
