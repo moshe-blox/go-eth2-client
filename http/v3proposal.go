@@ -17,6 +17,8 @@ import (
 	"bytes"
 	"context"
 	"fmt"
+	"log"
+
 	apiv1bellatrix "github.com/attestantio/go-eth2-client/api/v1/bellatrix"
 	apiv1capella "github.com/attestantio/go-eth2-client/api/v1/capella"
 	apiv1deneb "github.com/attestantio/go-eth2-client/api/v1/deneb"
@@ -204,6 +206,7 @@ func (s *Service) v3ProposalFromJSON(res *httpResponse) (*api.Response[*api.Vers
 	if !ok {
 		return nil, errors.New("missing Eth-Execution-Payload-Blinded header")
 	}
+	log.Printf("v3ProposalFromJSON: blindedHeader: %#v", blindedHeader)
 	var blinded bool
 	blinded, ok = blindedHeader.(bool)
 	if !ok {
