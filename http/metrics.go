@@ -1,4 +1,4 @@
-// Copyright © 2023 Attestant Limited.
+// Copyright © 2023, 2024 Attestant Limited.
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -15,14 +15,17 @@ package http
 
 import (
 	"context"
+	"errors"
 	"regexp"
 
 	"github.com/attestantio/go-eth2-client/metrics"
-	"github.com/pkg/errors"
 	"github.com/prometheus/client_golang/prometheus"
 )
 
-var requestsMetric *prometheus.CounterVec
+var (
+	requestsMetric *prometheus.CounterVec
+	stateMetric    *prometheus.GaugeVec
+)
 
 func registerMetrics(ctx context.Context, monitor metrics.Service) error {
 	if requestsMetric != nil {
@@ -48,22 +51,36 @@ func registerPrometheusMetrics(_ context.Context) error {
 		Help:      "Number of requests",
 	}, []string{"server", "method", "endpoint", "result"})
 	if err := prometheus.Register(requestsMetric); err != nil {
-		return errors.Wrap(err, "failed to register requests_total")
+		return errors.Join(errors.New("failed to register requests_total"), err)
+	}
+
+	stateMetric = prometheus.NewGaugeVec(prometheus.GaugeOpts{
+		Namespace: "consensusclient",
+		Subsystem: "http",
+		Name:      "connection_state",
+		Help:      "The state of the client connection (active/synced/inactive)",
+	}, []string{"server", "state"})
+	if err := prometheus.Register(stateMetric); err != nil {
+		return errors.Join(errors.New("failed to register state"), err)
 	}
 
 	return nil
 }
 
 func (s *Service) monitorGetComplete(_ context.Context, endpoint string, result string) {
-	if requestsMetric != nil {
-		requestsMetric.WithLabelValues(s.address, "GET", reduceEndpoint(endpoint), result).Inc()
+	if requestsMetric == nil {
+		return
 	}
+
+	requestsMetric.WithLabelValues(s.address, "GET", reduceEndpoint(endpoint), result).Inc()
 }
 
 func (s *Service) monitorPostComplete(_ context.Context, endpoint string, result string) {
-	if requestsMetric != nil {
-		requestsMetric.WithLabelValues(s.address, "POST", reduceEndpoint(endpoint), result).Inc()
+	if requestsMetric == nil {
+		return
 	}
+
+	requestsMetric.WithLabelValues(s.address, "POST", reduceEndpoint(endpoint), result).Inc()
 }
 
 type templateReplacement struct {
@@ -110,4 +127,25 @@ func reduceEndpoint(in string) string {
 	}
 
 	return string(out)
+}
+
+func (s *Service) monitorState(state string) {
+	if stateMetric == nil {
+		return
+	}
+
+	switch state {
+	case "synced":
+		stateMetric.WithLabelValues(s.address, "synced").Set(1)
+		stateMetric.WithLabelValues(s.address, "active").Set(0)
+		stateMetric.WithLabelValues(s.address, "inactive").Set(0)
+	case "active":
+		stateMetric.WithLabelValues(s.address, "synced").Set(0)
+		stateMetric.WithLabelValues(s.address, "active").Set(1)
+		stateMetric.WithLabelValues(s.address, "inactive").Set(0)
+	case "inactive":
+		stateMetric.WithLabelValues(s.address, "synced").Set(0)
+		stateMetric.WithLabelValues(s.address, "active").Set(0)
+		stateMetric.WithLabelValues(s.address, "inactive").Set(1)
+	}
 }

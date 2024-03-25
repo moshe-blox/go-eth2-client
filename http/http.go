@@ -1,4 +1,4 @@
-// Copyright © 2020, 2023 Attestant Limited.
+// Copyright © 2020 - 2024 Attestant Limited.
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
 // You may obtain a copy of the License at
@@ -17,6 +17,7 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"math/rand"
@@ -26,7 +27,6 @@ import (
 
 	"github.com/attestantio/go-eth2-client/api"
 	"github.com/attestantio/go-eth2-client/spec"
-	"github.com/pkg/errors"
 	"go.opentelemetry.io/otel"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/codes"
@@ -46,44 +46,37 @@ func (s *Service) post(ctx context.Context, endpoint string, body io.Reader) (io
 		e.Str("body", string(bodyBytes)).Msg("POST request")
 	}
 
-	url, err := url.Parse(fmt.Sprintf("%s%s", strings.TrimSuffix(s.base.String(), "/"), endpoint))
-	if err != nil {
-		return nil, errors.Wrap(err, "invalid endpoint")
-	}
+	url := urlForCall(s.base, endpoint, "")
 
 	opCtx, cancel := context.WithTimeout(ctx, s.timeout)
+	defer cancel()
 	req, err := http.NewRequestWithContext(opCtx, http.MethodPost, url.String(), body)
 	if err != nil {
-		cancel()
-
-		return nil, errors.Wrap(err, "failed to create POST request")
+		return nil, errors.Join(errors.New("failed to create POST request"), err)
 	}
 	s.addExtraHeaders(req)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Accept", "application/json")
 	if req.Header.Get("User-Agent") == "" {
-		req.Header.Set("User-Agent", "go-eth2-client/0.19.10")
+		req.Header.Set("User-Agent", "go-eth2-client/0.21.0")
 	}
 
 	resp, err := s.client.Do(req)
 	if err != nil {
-		cancel()
+		go s.CheckConnectionState(ctx)
 		s.monitorPostComplete(ctx, url.Path, "failed")
 
-		return nil, errors.Wrap(err, "failed to call POST endpoint")
+		return nil, errors.Join(errors.New("failed to call POST endpoint"), err)
 	}
 	defer resp.Body.Close()
 
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
-		cancel()
-
-		return nil, errors.Wrap(err, "failed to read POST response")
+		return nil, errors.Join(errors.New("failed to read POST response"), err)
 	}
 
 	statusFamily := resp.StatusCode / 100
 	if statusFamily != 2 {
-		cancel()
 		log.Trace().Int("status_code", resp.StatusCode).Str("data", string(data)).Msg("POST failed")
 		s.monitorPostComplete(ctx, url.Path, "failed")
 
@@ -94,7 +87,6 @@ func (s *Service) post(ctx context.Context, endpoint string, body io.Reader) (io
 			Data:       data,
 		}
 	}
-	cancel()
 
 	log.Trace().Str("response", string(data)).Msg("POST response")
 	s.monitorPostComplete(ctx, url.Path, "succeeded")
@@ -107,6 +99,8 @@ func (s *Service) post(ctx context.Context, endpoint string, body io.Reader) (io
 //nolint:unparam
 func (s *Service) post2(ctx context.Context,
 	endpoint string,
+	query string,
+	_ *api.CommonOpts,
 	body io.Reader,
 	contentType ContentType,
 	headers map[string]string,
@@ -117,26 +111,28 @@ func (s *Service) post2(ctx context.Context,
 	// #nosec G404
 	log := s.log.With().Str("id", fmt.Sprintf("%02x", rand.Int31())).Str("address", s.address).Str("endpoint", endpoint).Logger()
 	if e := log.Trace(); e.Enabled() {
-		bodyBytes, err := io.ReadAll(body)
-		if err != nil {
-			return nil, errors.New("failed to read request body")
+		switch contentType {
+		case ContentTypeJSON:
+			bodyBytes, err := io.ReadAll(body)
+			if err != nil {
+				return nil, errors.New("failed to read request body")
+			}
+			body = bytes.NewReader(bodyBytes)
+
+			e.Str("body", string(bodyBytes)).Msg("POST request")
+		default:
+			e.Str("content_type", contentType.String()).Msg("POST request")
 		}
-		body = bytes.NewReader(bodyBytes)
-
-		e.Str("body", string(bodyBytes)).Msg("POST request")
 	}
 
-	url, err := url.Parse(fmt.Sprintf("%s%s", strings.TrimSuffix(s.base.String(), "/"), endpoint))
-	if err != nil {
-		return nil, errors.Wrap(err, "invalid endpoint")
-	}
+	url := urlForCall(s.base, endpoint, query)
+	log.Trace().Str("url", url.String()).Msg("URL to POST")
 
 	opCtx, cancel := context.WithTimeout(ctx, s.timeout)
+	defer cancel()
 	req, err := http.NewRequestWithContext(opCtx, http.MethodPost, url.String(), body)
 	if err != nil {
-		cancel()
-
-		return nil, errors.Wrap(err, "failed to create POST request")
+		return nil, errors.Join(errors.New("failed to create POST request"), err)
 	}
 	s.addExtraHeaders(req)
 	req.Header.Set("Content-Type", contentType.MediaType())
@@ -146,28 +142,25 @@ func (s *Service) post2(ctx context.Context,
 		req.Header.Set(k, v)
 	}
 	if req.Header.Get("User-Agent") == "" {
-		req.Header.Set("User-Agent", "go-eth2-client/0.19.10")
+		req.Header.Set("User-Agent", "go-eth2-client/0.21.0")
 	}
 
 	resp, err := s.client.Do(req)
 	if err != nil {
-		cancel()
+		go s.CheckConnectionState(ctx)
 		s.monitorPostComplete(ctx, url.Path, "failed")
 
-		return nil, errors.Wrap(err, "failed to call POST endpoint")
+		return nil, errors.Join(errors.New("failed to call POST endpoint"), err)
 	}
 	defer resp.Body.Close()
 
 	data, err := io.ReadAll(resp.Body)
 	if err != nil {
-		cancel()
-
-		return nil, errors.Wrap(err, "failed to read POST response")
+		return nil, errors.Join(errors.New("failed to read POST response"), err)
 	}
 
 	statusFamily := resp.StatusCode / 100
 	if statusFamily != 2 {
-		cancel()
 		log.Trace().Int("status_code", resp.StatusCode).Str("data", string(data)).Msg("POST failed")
 		s.monitorPostComplete(ctx, url.Path, "failed")
 
@@ -178,7 +171,6 @@ func (s *Service) post2(ctx context.Context,
 			Data:       data,
 		}
 	}
-	cancel()
 
 	log.Trace().Str("response", string(data)).Msg("POST response")
 	s.monitorPostComplete(ctx, url.Path, "succeeded")
@@ -207,18 +199,16 @@ type httpResponse struct {
 
 // get sends an HTTP get request and returns the body.
 // If the response from the server is a 404 this will return nil for both the reader and the error.
-func (s *Service) get(ctx context.Context, endpoint string, opts *api.CommonOpts) (*httpResponse, error) {
-	ctx, span := otel.Tracer("attestantio.go-eth2-client.http").Start(ctx, "get2")
+func (s *Service) get(ctx context.Context, endpoint string, query string, opts *api.CommonOpts) (*httpResponse, error) {
+	ctx, span := otel.Tracer("attestantio.go-eth2-client.http").Start(ctx, "get")
 	defer span.End()
 
 	// #nosec G404
 	log := s.log.With().Str("id", fmt.Sprintf("%02x", rand.Int31())).Str("address", s.address).Str("endpoint", endpoint).Logger()
 	log.Trace().Msg("GET request")
 
-	url, err := url.Parse(fmt.Sprintf("%s%s", strings.TrimSuffix(s.base.String(), "/"), endpoint))
-	if err != nil {
-		return nil, errors.Wrap(err, "invalid endpoint")
-	}
+	url := urlForCall(s.base, endpoint, query)
+	log.Trace().Str("url", url.String()).Msg("URL to GET")
 
 	timeout := s.timeout
 	if opts.Timeout != 0 {
@@ -229,10 +219,9 @@ func (s *Service) get(ctx context.Context, endpoint string, opts *api.CommonOpts
 	defer cancel()
 	req, err := http.NewRequestWithContext(opCtx, http.MethodGet, url.String(), nil)
 	if err != nil {
-		cancel()
-
-		return nil, errors.Wrap(err, "failed to create GET request")
+		return nil, errors.Join(errors.New("failed to create GET request"), err)
 	}
+
 	s.addExtraHeaders(req)
 	if s.enforceJSON {
 		// JSON only.
@@ -241,14 +230,26 @@ func (s *Service) get(ctx context.Context, endpoint string, opts *api.CommonOpts
 		// Prefer SSZ, JSON if not.
 		req.Header.Set("Accept", "application/octet-stream;q=1,application/json;q=0.9")
 	}
-	span.AddEvent("Sending request")
 
 	resp, err := s.client.Do(req)
 	if err != nil {
-		span.RecordError(errors.New("Request failed"))
+		switch {
+		case errors.Is(err, context.Canceled):
+			// We don't consider context canceled to be a potential connection issue, as the user canceled the context.
+		case errors.Is(err, context.DeadlineExceeded):
+		// We don't consider context deadline exceeded to be a potential connection issue, as the user selected the deadline.
+		case strings.HasSuffix(url.String(), "/node/syncing"):
+			// Special case; if we have called the syncing endpoint and it failed then we don't check the connectino status, as
+			// that calls the syncing endpoint itself and so we find ourselves in an endless loop.
+		default:
+			// We consider other errors to be potential connection issues.
+			go s.CheckConnectionState(ctx)
+		}
+
+		span.RecordError(errors.New("request failed"))
 		s.monitorGetComplete(ctx, url.Path, "failed")
 
-		return nil, errors.Wrap(err, "failed to call GET endpoint")
+		return nil, errors.Join(errors.New("failed to call GET endpoint"), err)
 	}
 	defer resp.Body.Close()
 	log = log.With().Int("status_code", resp.StatusCode).Logger()
@@ -276,7 +277,20 @@ func (s *Service) get(ctx context.Context, endpoint string, opts *api.CommonOpts
 		span.RecordError(err)
 		log.Warn().Err(err).Msg("Failed to read body")
 
-		return nil, errors.Wrap(err, "failed to read body")
+		return nil, errors.Join(errors.New("failed to read body"), err)
+	}
+
+	if err := populateContentType(res, resp); err != nil {
+		// For now, assume that unknown type is JSON.
+		log.Debug().Err(err).Msg("Failed to obtain content type; assuming JSON")
+		res.contentType = ContentTypeJSON
+	}
+	span.SetAttributes(attribute.String("content-type", res.contentType.String()))
+
+	if res.contentType == ContentTypeJSON {
+		if e := log.Trace(); e.Enabled() {
+			e.RawJSON("body", res.body).Msg("Response")
+		}
 	}
 
 	statusFamily := resp.StatusCode / 100
@@ -294,15 +308,8 @@ func (s *Service) get(ctx context.Context, endpoint string, opts *api.CommonOpts
 		}
 	}
 
-	if err := populateContentType(res, resp); err != nil {
-		// For now, assume that unknown type is JSON.
-		log.Debug().Err(err).Msg("Failed to obtain content type; assuming JSON")
-		res.contentType = ContentTypeJSON
-	}
-	span.SetAttributes(attribute.String("content-type", res.contentType.String()))
-
 	if err := populateConsensusVersion(res, resp); err != nil {
-		return nil, errors.Wrap(err, "failed to parse consensus version")
+		return nil, errors.Join(errors.New("failed to parse consensus version"), err)
 	}
 
 	s.monitorGetComplete(ctx, url.Path, "succeeded")
@@ -322,7 +329,7 @@ func populateConsensusVersion(res *httpResponse, resp *http.Response) error {
 		}
 		var metadata responseMetadata
 		if err := json.Unmarshal(res.body, &metadata); err != nil {
-			return errors.Wrap(err, "no consensus version header and failed to parse response")
+			return errors.Join(errors.New("no consensus version header and failed to parse response"), err)
 		}
 		res.consensusVersion = metadata.Version
 
@@ -332,7 +339,7 @@ func populateConsensusVersion(res *httpResponse, resp *http.Response) error {
 		return fmt.Errorf("malformed consensus version (%d entries)", len(respConsensusVersions))
 	}
 	if err := res.consensusVersion.UnmarshalJSON([]byte(fmt.Sprintf("%q", respConsensusVersions[0]))); err != nil {
-		return errors.Wrap(err, "failed to parse consensus version")
+		return errors.Join(errors.New("failed to parse consensus version"), err)
 	}
 
 	return nil
@@ -370,4 +377,17 @@ func metadataFromHeaders(headers map[string]string) map[string]any {
 	}
 
 	return metadata
+}
+
+// urlForCall patches together a URL for a call.
+func urlForCall(base *url.URL, endpoint string, query string) *url.URL {
+	callURL := *base
+	callURL.Path = endpoint
+	if callURL.RawQuery == "" {
+		callURL.RawQuery = query
+	} else if query != "" {
+		callURL.RawQuery = fmt.Sprintf("%s&%s", callURL.RawQuery, query)
+	}
+
+	return &callURL
 }
