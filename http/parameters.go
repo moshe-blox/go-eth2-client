@@ -30,6 +30,7 @@ type parameters struct {
 	pubKeyChunkSize int
 	extraHeaders    map[string]string
 	enforceJSON     bool
+	reduceMemUsage  bool
 }
 
 // Parameter is the interface for service parameters.
@@ -96,6 +97,14 @@ func WithExtraHeaders(headers map[string]string) Parameter {
 func WithEnforceJSON(enforceJSON bool) Parameter {
 	return parameterFunc(func(p *parameters) {
 		p.enforceJSON = enforceJSON
+	})
+}
+
+// WithReducedMemoryUsage reduces memory usage by disabling certain actions that may take significant amount of memory.
+// Enabling this may result in longer response times.
+func WithReducedMemoryUsage(reduceMemUsage bool) Parameter {
+	return parameterFunc(func(p *parameters) {
+		p.reduceMemUsage = reduceMemUsage
 	})
 }
 

@@ -63,6 +63,7 @@ type Service struct {
 	// Endpoint support.
 	enforceJSON              bool
 	connectedToDVTMiddleware bool
+	reduceMemUsage           bool
 }
 
 // New creates a new Ethereum 2 client service, connecting with a standard HTTP.
@@ -120,6 +121,7 @@ func New(ctx context.Context, params ...Parameter) (eth2client.Service, error) {
 		userPubKeyChunkSize: parameters.pubKeyChunkSize,
 		extraHeaders:        parameters.extraHeaders,
 		enforceJSON:         parameters.enforceJSON,
+		reduceMemUsage:      parameters.reduceMemUsage,
 	}
 
 	// Fetch static values to confirm the connection is good.
