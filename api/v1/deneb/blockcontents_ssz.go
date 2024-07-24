@@ -39,8 +39,8 @@ func (b *BlockContents) MarshalSSZTo(buf []byte) (dst []byte, err error) {
 	}
 
 	// Field (1) 'KZGProofs'
-	if size := len(b.KZGProofs); size > 4096 {
-		err = ssz.ErrListTooBigFn("BlockContents.KZGProofs", size, 4096)
+	if size := len(b.KZGProofs); size > 6 {
+		err = ssz.ErrListTooBigFn("BlockContents.KZGProofs", size, 6)
 		return
 	}
 	for ii := 0; ii < len(b.KZGProofs); ii++ {
@@ -48,8 +48,8 @@ func (b *BlockContents) MarshalSSZTo(buf []byte) (dst []byte, err error) {
 	}
 
 	// Field (2) 'Blobs'
-	if size := len(b.Blobs); size > 4096 {
-		err = ssz.ErrListTooBigFn("BlockContents.Blobs", size, 4096)
+	if size := len(b.Blobs); size > 6 {
+		err = ssz.ErrListTooBigFn("BlockContents.Blobs", size, 6)
 		return
 	}
 	for ii := 0; ii < len(b.Blobs); ii++ {
@@ -103,7 +103,7 @@ func (b *BlockContents) UnmarshalSSZ(buf []byte) error {
 	// Field (1) 'KZGProofs'
 	{
 		buf = tail[o1:o2]
-		num, err := ssz.DivideInt2(len(buf), 48, 4096)
+		num, err := ssz.DivideInt2(len(buf), 48, 6)
 		if err != nil {
 			return err
 		}
@@ -116,7 +116,7 @@ func (b *BlockContents) UnmarshalSSZ(buf []byte) error {
 	// Field (2) 'Blobs'
 	{
 		buf = tail[o2:]
-		num, err := ssz.DivideInt2(len(buf), 131072, 4096)
+		num, err := ssz.DivideInt2(len(buf), 131072, 6)
 		if err != nil {
 			return err
 		}
@@ -163,8 +163,8 @@ func (b *BlockContents) HashTreeRootWith(hh ssz.HashWalker) (err error) {
 
 	// Field (1) 'KZGProofs'
 	{
-		if size := len(b.KZGProofs); size > 4096 {
-			err = ssz.ErrListTooBigFn("BlockContents.KZGProofs", size, 4096)
+		if size := len(b.KZGProofs); size > 6 {
+			err = ssz.ErrListTooBigFn("BlockContents.KZGProofs", size, 6)
 			return
 		}
 		subIndx := hh.Index()
@@ -172,13 +172,13 @@ func (b *BlockContents) HashTreeRootWith(hh ssz.HashWalker) (err error) {
 			hh.PutBytes(i[:])
 		}
 		numItems := uint64(len(b.KZGProofs))
-		hh.MerkleizeWithMixin(subIndx, numItems, 4096)
+		hh.MerkleizeWithMixin(subIndx, numItems, 6)
 	}
 
 	// Field (2) 'Blobs'
 	{
-		if size := len(b.Blobs); size > 4096 {
-			err = ssz.ErrListTooBigFn("BlockContents.Blobs", size, 4096)
+		if size := len(b.Blobs); size > 6 {
+			err = ssz.ErrListTooBigFn("BlockContents.Blobs", size, 6)
 			return
 		}
 		subIndx := hh.Index()
@@ -186,7 +186,7 @@ func (b *BlockContents) HashTreeRootWith(hh ssz.HashWalker) (err error) {
 			hh.PutBytes(i[:])
 		}
 		numItems := uint64(len(b.Blobs))
-		hh.MerkleizeWithMixin(subIndx, numItems, 4096)
+		hh.MerkleizeWithMixin(subIndx, numItems, 6)
 	}
 
 	hh.Merkleize(indx)
